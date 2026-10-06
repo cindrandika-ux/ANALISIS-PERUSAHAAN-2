@@ -34,4 +34,3 @@ CREATE TABLE IF NOT EXISTS pengguna (
     terverifikasi INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pengguna_email ON pengguna(email);
