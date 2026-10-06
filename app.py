@@ -311,19 +311,37 @@ if len(tahuns) >= 2:
                  else f"{label}: {perubahan['arah']}")
     df_tren = pd.DataFrame([{"tahun": t, "pendapatan": hist[t].get("pendapatan"),
                              "laba_bersih": hist[t].get("laba_bersih")} for t in tahuns])
-    fig1 = px.line(df_tren, x="tahun", y=["pendapatan", "laba_bersih"],
-                   markers=True, title="Tren pendapatan & laba bersih (Rp)",
-                   color_discrete_sequence=["#1F3A5F", "#2F9E8F"])
-    fig1.update_layout(template="simple_white", font=dict(size=12))
-    st.plotly_chart(fig1, use_container_width=True)
+    for _kolom in ("pendapatan", "laba_bersih"):
+        df_tren[_kolom] = pd.to_numeric(df_tren[_kolom], errors="coerce")
+    kolom_ada = [c for c in ("pendapatan", "laba_bersih") if df_tren[c].notna().any()]
+    if kolom_ada:
+        try:
+            fig1 = px.line(df_tren, x="tahun", y=kolom_ada,
+                           markers=True, title="Tren pendapatan & laba bersih (Rp)",
+                           color_discrete_sequence=["#1F3A5F", "#2F9E8F"])
+            fig1.update_layout(template="simple_white", font=dict(size=12))
+            st.plotly_chart(fig1, use_container_width=True)
+        except Exception:
+            st.info("Grafik tren belum bisa ditampilkan karena data kurang lengkap.")
+    else:
+        st.info("Grafik tren belum bisa ditampilkan karena data kurang lengkap.")
     r_hist = {t: hitung_rasio(hist[t]) for t in tahuns}
     df_r = pd.DataFrame([{"tahun": t, "current_ratio": r_hist[t].get("current_ratio"),
                           "der": r_hist[t].get("der")} for t in tahuns])
-    fig2 = px.line(df_r, x="tahun", y=["current_ratio", "der"],
-                   markers=True, title="Tren rasio lancar & DER",
-                   color_discrete_sequence=["#1F3A5F", "#B7792B"])
-    fig2.update_layout(template="simple_white", font=dict(size=12))
-    st.plotly_chart(fig2, use_container_width=True)
+    for _kolom in ("current_ratio", "der"):
+        df_r[_kolom] = pd.to_numeric(df_r[_kolom], errors="coerce")
+    kolom_rasio = [c for c in ("current_ratio", "der") if df_r[c].notna().any()]
+    if kolom_rasio:
+        try:
+            fig2 = px.line(df_r, x="tahun", y=kolom_rasio,
+                           markers=True, title="Tren rasio lancar & DER",
+                           color_discrete_sequence=["#1F3A5F", "#B7792B"])
+            fig2.update_layout(template="simple_white", font=dict(size=12))
+            st.plotly_chart(fig2, use_container_width=True)
+        except Exception:
+            st.info("Grafik rasio belum bisa ditampilkan karena data kurang lengkap.")
+    else:
+        st.info("Grafik rasio belum bisa ditampilkan karena data kurang lengkap.")
 
 # Prediksi
 st.subheader("Prediksi kesehatan tahun depan")
