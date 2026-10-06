@@ -20,7 +20,7 @@ load_dotenv()
 from analysis.commonsize import common_size_laba_rugi, common_size_neraca
 from analysis.rasio import RASIO_INFO, hitung_rasio
 from analysis.tren import hitung_perubahan
-from auth import wajib_login
+from auth import apakah_admin, wajib_login
 from db.sqlite import ambil_historis, daftar_perusahaan, init_db, konek, simpan_laporan
 from extractors.akun_dagang import ekstrak_akun, ringkas_ke_tabel
 from extractors.angka_parser import deteksi_satuan
@@ -129,6 +129,18 @@ with st.sidebar.expander("Data tersimpan"):
             st.success("Data fiktif dimuat. Bukan data riil.")
         except FileNotFoundError:
             st.error("File data_contoh/seed_historis_2022_2024.csv tidak ditemukan.")
+if apakah_admin(str(st.session_state.get("pengguna", ""))):
+    with st.sidebar.expander("Pendaftar (khusus admin)"):
+        from db.sqlite import daftar_pengguna
+        pendaftar = daftar_pengguna(con)
+        st.write(f"Jumlah pendaftar: {len(pendaftar)}")
+        if pendaftar:
+            st.dataframe(pd.DataFrame([{"Nama pengguna": p["nama"],
+                                        "Waktu daftar": p["waktu_daftar"]}
+                                       for p in pendaftar]),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.caption("Belum ada pendaftar.")
 
 # ---------- Main ----------
 c1, c2, c3, c4, c5 = st.columns(5)

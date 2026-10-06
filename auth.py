@@ -61,6 +61,15 @@ def nama_valid(username: str) -> bool:
     return re.fullmatch(r"[A-Za-z0-9_.]{3,20}", (username or "").strip() or "") is not None
 
 
+def apakah_admin(username: str) -> bool:
+    """True bila username terdaftar sebagai admin di secrets ([admins] daftar)."""
+    try:
+        daftar = list(st.secrets.get("admins", {}).get("daftar", []))
+    except Exception:
+        return False
+    return (username or "").strip() in daftar
+
+
 def _db():
     """Koneksi database pengguna (buat tabel bila belum ada)."""
     from db.sqlite import init_db, konek

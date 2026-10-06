@@ -2,7 +2,7 @@
 import sqlite3
 
 from auth import buat_hash, cek_hash, nama_valid
-from db.sqlite import ambil_hash_pengguna, init_db, tambah_pengguna
+from db.sqlite import ambil_hash_pengguna, daftar_pengguna, init_db, tambah_pengguna
 
 
 def _mem():
@@ -34,3 +34,15 @@ def test_daftar_lalu_verifikasi():
     tersimpan = ambil_hash_pengguna(con, "budi")
     assert tersimpan is not None and cek_hash("rahasia123", tersimpan) is True
     assert ambil_hash_pengguna(con, "takada") is None
+
+
+def test_daftar_tanpa_sandi():
+    con = _mem()
+    tambah_pengguna(con, "ani", buat_hash("x12345"))
+    tambah_pengguna(con, "budi", buat_hash("y12345"))
+    daftar = daftar_pengguna(con)
+    assert [p["nama"] for p in daftar] == ["ani", "budi"]
+    assert all("waktu_daftar" in p for p in daftar)
+    # Pastikan tidak ada hash sandi yang ikut keluar
+    assert all("hash" not in k.lower() and "pwd" not in k.lower()
+               for p in daftar for k in p)

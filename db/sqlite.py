@@ -88,3 +88,9 @@ def ambil_hash_pengguna(con: sqlite3.Connection, username: str) -> str | None:
     row = con.execute("SELECT pwd_hash FROM pengguna WHERE username=?",
                       ((username or "").strip(),)).fetchone()
     return row["pwd_hash"] if row else None
+
+
+def daftar_pengguna(con: sqlite3.Connection) -> list[dict]:
+    """Daftar pendaftar (nama + waktu daftar saja, tanpa hash sandi)."""
+    rows = con.execute("SELECT username, created_at FROM pengguna ORDER BY created_at").fetchall()
+    return [{"nama": r["username"], "waktu_daftar": r["created_at"]} for r in rows]
