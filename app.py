@@ -223,8 +223,8 @@ for idx, tab in enumerate(tab_semua):
                                   key=f"editor_{idx}",
                                   column_order=["Nama akun", "tahun_berjalan", "komparatif"],
                                   column_config={"Nama akun": st.column_config.TextColumn("Nama akun", disabled=True),
-                                                 "tahun_berjalan": st.column_config.NumberColumn("Tahun berjalan (Rp)"),
-                                                 "komparatif": st.column_config.NumberColumn("Tahun lalu (Rp)")})
+                                                 "tahun_berjalan": st.column_config.NumberColumn("Tahun berjalan (Rp)", format="%,.0f"),
+                                                 "komparatif": st.column_config.NumberColumn("Tahun lalu (Rp)", format="%,.0f")})
         if st.button(f"Simpan {thn} ke database", key=f"simpan_{idx}"):
             data_simpan = {}
             for _, r in edited_f.iterrows():
@@ -268,7 +268,17 @@ else:
 
 st.subheader("Rasio keuangan (lengkap dengan rumus)")
 rasio = hitung_rasio(cur)
-rtabel = pd.DataFrame([{"Nama": LABEL_ID.get(k, k), "Nilai": v,
+
+
+def _fmt_nilai(kunci: str, nilai: float | None) -> str:
+    if nilai is None:
+        return "tidak ditemukan"
+    if kunci in ("gross_margin", "operating_margin", "net_margin", "roa", "roe", "debt_ratio"):
+        return f"{nilai * 100:.1f}%".replace(".", ",")
+    return f"{nilai:.2f}".replace(".", ",")
+
+
+rtabel = pd.DataFrame([{"Nama": LABEL_ID.get(k, k), "Nilai": _fmt_nilai(k, v),
                         "Rumus": RASIO_INFO.get(k, {}).get("rumus", ""),
                         "Penjelasan": RASIO_INFO.get(k, {}).get("penjelasan", "")}
                        for k, v in rasio.items()])
@@ -279,13 +289,13 @@ with st.expander("Proporsi tiap pos laporan"):
     st.write("Neraca (% dari total aset):")
     st.dataframe(pd.DataFrame(
         [{"Pos": NAMA_AKUN.get(k, k),
-          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%"}
+          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%".replace(".", ",")}
          for k, v in n_size.items()]), use_container_width=True, hide_index=True)
     l_size = common_size_laba_rugi(cur)
     st.write("Laba rugi (% dari pendapatan):")
     st.dataframe(pd.DataFrame(
         [{"Pos": NAMA_AKUN.get(k, k),
-          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%"}
+          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%".replace(".", ",")}
          for k, v in l_size.items()]), use_container_width=True, hide_index=True)
 
 # Gabung historis DB + semua tahun yang diunggah + komparatif untuk tren/proyeksi
