@@ -31,7 +31,18 @@ def init_db(con: sqlite3.Connection) -> None:
     """Buat tabel sesuai db/schema.sql (idempotent)."""
     schema = Path(__file__).with_name("schema.sql").read_text(encoding="utf-8")
     con.executescript(schema)
+    _migrasi_pengguna(con)
     con.commit()
+
+
+def _migrasi_pengguna(con: sqlite3.Connection) -> None:
+    """Tambahkan kolom akun baru bila database lama belum memilikinya."""
+    kolom = {r[1] for r in con.execute("PRAGMA table_info(pengguna)").fetchall()}
+    for nama, tipe in [("nama", "TEXT"), ("email", "TEXT"), ("token", "TEXT"),
+                       ("token_exp", "TEXT"), ("terverifikasi", "INTEGER DEFAULT 0")]:
+        if nama not in kolom:
+            con.execute(f"ALTER TABLE pengguna ADD COLUMN {nama} {tipe}")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pengguna_email ON pengguna(email)")
 
 
 def perusahaan_id(con: sqlite3.Connection, nama: str) -> int:
@@ -70,27 +81,70 @@ def daftar_perusahaan(con: sqlite3.Connection) -> list[str]:
     return [r["nama"] for r in rows]
 
 
-def tambah_pengguna(con: sqlite3.Connection, username: str, pwd_hash: str) -> bool:
-    """Daftarkan username baru. False bila nama sudah dipakai."""
-    nama = (username or "").strip()
-    if not nama:
-        return False
-    try:
-        con.execute("INSERT INTO pengguna(username, pwd_hash) VALUES(?, ?)", (nama, pwd_hash))
-        con.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
+def tambah_pengguna(con: sqlite3.Connection, nama: str, email: str,
+                      pwd_hash: str, token: str, token_exp: str) -> tuple[bool, str]:
+    """Daftarkan akun baru (belum terverifikasi). Kembalikan (ok, pesan)."""
+    email_bersih = (email or "").strip().lower()
+    nama_bersih = (nama or "").strip()
+    if not nama_bersih:
+        return False, "Nama wajib diisi."
+    if not email_bersih:
+        return False, "Email wajib diisi."
+    ada = con.execute("SELECT 1 FROM pengguna WHERE lower(email)=?",
+                      (email_bersih,)).fetchone()
+    if ada:
+        return False, "Email sudah terdaftar. Silakan masuk."
+    con.execute("INSERT INTO pengguna(username, pwd_hash, nama, email, token, token_exp, terverifikasi)"
+                " VALUES(?, ?, ?, ?, ?, ?, 0)",
+                (email_bersih, pwd_hash, nama_bersih, email_bersih, token, token_exp))
+    con.commit()
+    return True, "Pendaftaran berhasil."
 
 
 def ambil_hash_pengguna(con: sqlite3.Connection, username: str) -> str | None:
-    """Ambil hash tersimpan satu pengguna (None bila tidak ada)."""
-    row = con.execute("SELECT pwd_hash FROM pengguna WHERE username=?",
-                      ((username or "").strip(),)).fetchone()
+    """Ambil hash tersimpan satu pengguna (None bila tidak ada).
+
+    Menerima email (pendaftaran baru) atau username (akun lama/demo).
+    """
+    kunci = (username or "").strip()
+    row = con.execute("SELECT pwd_hash FROM pengguna WHERE lower(email)=lower(?) OR username=?",
+                      (kunci, kunci)).fetchone()
     return row["pwd_hash"] if row else None
 
 
+def ambil_pengguna(con: sqlite3.Connection, identitas: str) -> dict | None:
+    """Ambil baris pengguna per email/username (None bila tidak ada)."""
+    kunci = (identitas or "").strip()
+    row = con.execute("SELECT * FROM pengguna WHERE lower(email)=lower(?) OR username=?",
+                      (kunci, kunci)).fetchone()
+    return dict(row) if row else None
+
+
+def verifikasi_token(con: sqlite3.Connection, token: str) -> tuple[bool, str]:
+    """Aktifkan akun dari token link email (cek kedaluwarsa 24 jam)."""
+    from datetime import datetime, timezone
+    if not token:
+        return False, "Tautan tidak valid."
+    row = con.execute("SELECT * FROM pengguna WHERE token=?", (token,)).fetchone()
+    if not row:
+        return False, "Tautan verifikasi tidak dikenal."
+    if int(row["terverifikasi"] or 0) == 1:
+        return True, "Email sudah terverifikasi sebelumnya. Silakan masuk."
+    try:
+        kedaluwarsa = datetime.fromisoformat(row["token_exp"])
+    except (TypeError, ValueError):
+        return False, "Tautan verifikasi rusak."
+    if datetime.now(timezone.utc) > kedaluwarsa:
+        return False, "Tautan kedaluwarsa. Silakan daftar ulang."
+    con.execute("UPDATE pengguna SET terverifikasi=1, token=NULL WHERE id=?", (row["id"],))
+    con.commit()
+    return True, "Email terverifikasi. Silakan masuk dengan akun Anda."
+
+
 def daftar_pengguna(con: sqlite3.Connection) -> list[dict]:
-    """Daftar pendaftar (nama + waktu daftar saja, tanpa hash sandi)."""
-    rows = con.execute("SELECT username, created_at FROM pengguna ORDER BY created_at").fetchall()
-    return [{"nama": r["username"], "waktu_daftar": r["created_at"]} for r in rows]
+    """Daftar pendaftar (nama + email + status, tanpa hash sandi)."""
+    rows = con.execute("SELECT nama, email, terverifikasi, created_at FROM pengguna"
+                       " ORDER BY created_at").fetchall()
+    return [{"nama": r["nama"] or r["email"], "email": r["email"],
+             "terverifikasi": "Ya" if int(r["terverifikasi"] or 0) == 1 else "Belum",
+             "waktu_daftar": r["created_at"]} for r in rows]

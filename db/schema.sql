@@ -22,9 +22,16 @@ CREATE TABLE IF NOT EXISTS laporan_keuangan (
 );
 
 -- Akun pengguna (kata sandi tersimpan sebagai hash, bukan teks asli).
+-- email dipakai untuk masuk + verifikasi; terverifikasi=1 berarti aktif.
 CREATE TABLE IF NOT EXISTS pengguna (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     pwd_hash TEXT NOT NULL,
+    nama TEXT,
+    email TEXT,
+    token TEXT,
+    token_exp TEXT,
+    terverifikasi INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pengguna_email ON pengguna(email);

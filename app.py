@@ -135,7 +135,8 @@ if apakah_admin(str(st.session_state.get("pengguna", ""))):
         pendaftar = daftar_pengguna(con)
         st.write(f"Jumlah pendaftar: {len(pendaftar)}")
         if pendaftar:
-            st.dataframe(pd.DataFrame([{"Nama pengguna": p["nama"],
+            st.dataframe(pd.DataFrame([{"Nama": p["nama"], "Email": p["email"],
+                                        "Status": p["terverifikasi"],
                                         "Waktu daftar": p["waktu_daftar"]}
                                        for p in pendaftar]),
                          use_container_width=True, hide_index=True)
