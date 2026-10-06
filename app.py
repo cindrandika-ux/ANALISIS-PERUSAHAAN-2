@@ -20,6 +20,7 @@ load_dotenv()
 from analysis.commonsize import common_size_laba_rugi, common_size_neraca
 from analysis.rasio import RASIO_INFO, hitung_rasio
 from analysis.tren import hitung_perubahan
+from auth import wajib_login
 from db.sqlite import ambil_historis, daftar_perusahaan, init_db, konek, simpan_laporan
 from extractors.akun_dagang import ekstrak_akun, ringkas_ke_tabel
 from extractors.angka_parser import deteksi_satuan
@@ -93,6 +94,9 @@ NAMA_KOMPONEN = {
     "calk": "Catatan atas laporan keuangan",
 }
 
+
+# ---------- Gerbang login (sebelum konten apa pun) ----------
+wajib_login()
 
 # ---------- Sidebar ----------
 st.sidebar.header("Pengaturan")
