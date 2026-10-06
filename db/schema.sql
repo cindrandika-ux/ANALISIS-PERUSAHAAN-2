@@ -20,3 +20,11 @@ CREATE TABLE IF NOT EXISTS laporan_keuangan (
     sumber TEXT DEFAULT 'manual/csv/pdf',
     UNIQUE(perusahaan_id, tahun)
 );
+
+-- Akun pengguna (kata sandi tersimpan sebagai hash, bukan teks asli).
+CREATE TABLE IF NOT EXISTS pengguna (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    pwd_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+);

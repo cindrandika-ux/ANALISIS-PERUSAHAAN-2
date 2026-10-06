@@ -68,3 +68,23 @@ def daftar_perusahaan(con: sqlite3.Connection) -> list[str]:
     """Daftar nama perusahaan yang pernah disimpan."""
     rows = con.execute("SELECT nama FROM perusahaan ORDER BY nama").fetchall()
     return [r["nama"] for r in rows]
+
+
+def tambah_pengguna(con: sqlite3.Connection, username: str, pwd_hash: str) -> bool:
+    """Daftarkan username baru. False bila nama sudah dipakai."""
+    nama = (username or "").strip()
+    if not nama:
+        return False
+    try:
+        con.execute("INSERT INTO pengguna(username, pwd_hash) VALUES(?, ?)", (nama, pwd_hash))
+        con.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def ambil_hash_pengguna(con: sqlite3.Connection, username: str) -> str | None:
+    """Ambil hash tersimpan satu pengguna (None bila tidak ada)."""
+    row = con.execute("SELECT pwd_hash FROM pengguna WHERE username=?",
+                      ((username or "").strip(),)).fetchone()
+    return row["pwd_hash"] if row else None
