@@ -192,7 +192,6 @@ def _form_masuk() -> None:
                 _masuk(akun.get("email") or identitas)
         else:
             st.error("Email/nama pengguna atau kata sandi salah.")
-    st.caption("Akun demo: tamu / demo123")
 
 
 def _form_daftar() -> None:
