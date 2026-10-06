@@ -26,7 +26,8 @@ from extractors.angka_parser import deteksi_satuan
 from extractors.ocr_fallback import cek_tesseract_tersedia, ocr_pdf_scan
 from extractors.pdf_text import ekstrak_teks
 from prediction.altman import hitung_zpp
-from prediction.narasi import DISCLAIMER, buat_narasi, kategori_final, pilih_pendukung_risiko
+from prediction.narasi import (DISCLAIMER, LABEL_ID, buat_narasi, kategori_final,
+                               pilih_pendukung_risiko)
 from prediction.proyeksi import proyeksi_regresi
 from prediction.skor import BOBOT_DEFAULT, hitung_skor, kategori_dari_skor
 from report.pdf_laporan import buat_pdf
@@ -75,6 +76,24 @@ def rp(x) -> str:
         return "tidak ditemukan"
 
 
+# Nama tampilan berbahasa Indonesia (kode internal tetap dipakai untuk hitungan).
+NAMA_AKUN = {
+    "kas": "Kas dan setara kas", "piutang": "Piutang", "persediaan": "Persediaan",
+    "aset_lancar": "Aset lancar", "total_aset": "Total aset",
+    "liab_pendek": "Liabilitas jangka pendek", "liab_panjang": "Liabilitas jangka panjang",
+    "total_liab": "Total liabilitas", "ekuitas": "Ekuitas", "laba_ditahan": "Laba ditahan",
+    "pendapatan": "Pendapatan", "laba_kotor": "Laba kotor", "laba_usaha": "Laba usaha",
+    "beban_bunga": "Beban bunga", "laba_sebelum_pajak": "Laba sebelum pajak",
+    "laba_bersih": "Laba bersih", "cfo": "Arus kas operasi", "cfi": "Arus kas investasi",
+    "cff": "Arus kas pendanaan", "kas_akhir": "Kas akhir tahun",
+}
+NAMA_KOMPONEN = {
+    "posisi_keuangan": "Laporan posisi keuangan", "laba_rugi_komprehensif": "Laporan laba rugi",
+    "perubahan_ekuitas": "Laporan perubahan ekuitas", "arus_kas": "Laporan arus kas",
+    "calk": "Catatan atas laporan keuangan",
+}
+
+
 # ---------- Sidebar ----------
 st.sidebar.header("Pengaturan")
 nama_perusahaan = st.sidebar.text_input("Nama perusahaan", "PT Dagang Sejahtera Fiktif")
@@ -85,13 +104,13 @@ b_sol = st.sidebar.slider("Solvabilitas", 0, 60, int(BOBOT_DEFAULT["solvabilitas
 b_prof = st.sidebar.slider("Profitabilitas", 0, 60, int(BOBOT_DEFAULT["profitabilitas"] * 100))
 b_akt = st.sidebar.slider("Aktivitas+Kas", 0, 60, int(BOBOT_DEFAULT["aktivitas_kas"] * 100))
 tess = cek_tesseract_tersedia()
-st.sidebar.caption(f"OCR Tesseract: {'OK' if tess['tersedia'] else 'belum ada — ' + (tess['pesan'][:80])}")
+st.sidebar.caption(f"Fitur baca dokumen scan (OCR): {'Siap' if tess['tersedia'] else 'Belum tersedia di perangkat ini'}")
 
 con = konek()
 init_db(con)
-with st.sidebar.expander("Database lokal"):
+with st.sidebar.expander("Data tersimpan"):
     st.write("Perusahaan tersimpan:", daftar_perusahaan(con) or ["(kosong)"])
-    if st.button("Muat data fiktif 2022-2024 (demo)"):
+    if st.button("Muat contoh perusahaan demo"):
         csv_path = Path(__file__).parent / "data_contoh" / "seed_historis_2022_2024.csv"
         try:
             with open(csv_path, newline="", encoding="utf-8") as f:
@@ -156,15 +175,15 @@ for idx, tab in enumerate(tab_semua):
 
         ek = ekstrak_teks(data_bytes)
         teks = ek["teks"]
-        st.caption(f"Ekstraksi: {ek['metode']} | {ek['jumlah_halaman']} halaman | {ek['jumlah_karakter']} karakter.")
+        st.caption(f"Dokumen terbaca: {ek['jumlah_halaman']} halaman.")
         if ek["perlu_ocr"]:
-            st.warning("Teks minim — diduga PDF scan. Menjalankan OCR (pytesseract)...")
+            st.warning("Dokumen ini hasil scan. Membaca gambar dokumen...")
             ocr = ocr_pdf_scan(data_bytes)
             if ocr["ok"]:
                 teks = ocr["teks"]
-                st.success(f"OCR berhasil ({ocr['halaman']} halaman). Selalu verifikasi di tabel edit.")
+                st.success(f"Dokumen scan berhasil dibaca ({ocr['halaman']} halaman). Tetap periksa tabel di bawah.")
             else:
-                st.error(ocr["pesan"])
+                st.error("Dokumen scan tidak terbaca. Coba unggah PDF yang teksnya bisa disalin.")
                 continue
 
         # Validasi isi
@@ -172,16 +191,20 @@ for idx, tab in enumerate(tab_semua):
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Opini auditor")
-            st.write(f"Ada laporan auditor: {'Ya' if opini['ada_laporan_auditor'] else 'Tidak'}")
-            st.write(f"Opini: **{opini['opini']}**")
+            st.write(f"Laporan auditor: {'Ditemukan' if opini['ada_laporan_auditor'] else 'Tidak ditemukan'}")
+            arti_opini = {"WTP": "Wajar Tanpa Pengecualian (baik)", "WDP": "Wajar Dengan Pengecualian",
+                          "TW": "Tidak Wajar", "Disclaimer": "Auditor tidak memberi pendapat",
+                          "TIDAK_DITEMUKAN": "tidak terbaca"}.get(opini["opini"], opini["opini"])
+            st.write(f"Hasil audit: **{arti_opini}**")
             if opini["peringatan"]:
                 st.warning(opini["peringatan"])
         with col2:
-            st.subheader("Kelengkapan PSAK 1 & kerangka")
+            st.subheader("Kelengkapan laporan & kerangka")
             psak = cek_kelengkapan_psak1(teks)
-            st.write({k: ("ada" if v else "HILANG") for k, v in psak["komponen"].items()})
+            for kode, ada in psak["komponen"].items():
+                st.write(f"{'✓' if ada else '✗'} {NAMA_KOMPONEN.get(kode, kode)}")
             if not psak["lengkap"]:
-                st.warning(f"Komponen hilang: {', '.join(psak['hilang'])}. Tetap bisa lanjut, tetapi validasi kurang.")
+                st.warning("Ada komponen tidak lengkap. Tetap bisa lanjut, tetapi hasil kurang maksimal.")
             kerangka = deteksi_kerangka(teks)
             st.write(f"Kerangka: **{kerangka['kerangka']}**")
             if not kerangka["ditemukan"]:
@@ -189,14 +212,19 @@ for idx, tab in enumerate(tab_semua):
 
         # Ekstraksi + human-in-the-loop
         satuan = deteksi_satuan(teks)
-        st.info(f"Satuan terdeteksi: {satuan['satuan']} (x{satuan['pengali']:,}). Nilai di bawah sudah dinormalisasi ke Rupiah penuh.")
+        satuan_teks = {"penuh": "Rupiah penuh", "ribu": "ribuan Rupiah (otomatis dikali 1.000)",
+                       "juta": "jutaan Rupiah (otomatis dikali 1.000.000)"}.get(satuan["satuan"], "Rupiah")
+        st.info(f"Satuan angka laporan: {satuan_teks}.")
         hasil_ek = ekstrak_akun(teks, pengali=float(satuan["pengali"]))
         df = pd.DataFrame(ringkas_ke_tabel(hasil_ek))
-        st.subheader("Hasil ekstraksi (periksa & edit sebelum analisis)")
+        df["Nama akun"] = df["akun"].map(lambda k: NAMA_AKUN.get(k, k))
+        st.subheader("Hasil pembacaan (periksa & ubah bila perlu)")
         edited_f = st.data_editor(df, num_rows="fixed", use_container_width=True,
                                   key=f"editor_{idx}",
-                                  column_config={"tahun_berjalan": st.column_config.NumberColumn("Tahun berjalan (Rp)"),
-                                                 "komparatif": st.column_config.NumberColumn("Komparatif t-1 (Rp)")})
+                                  column_order=["Nama akun", "tahun_berjalan", "komparatif"],
+                                  column_config={"Nama akun": st.column_config.TextColumn("Nama akun", disabled=True),
+                                                 "tahun_berjalan": st.column_config.NumberColumn("Tahun berjalan (Rp)"),
+                                                 "komparatif": st.column_config.NumberColumn("Tahun lalu (Rp)")})
         if st.button(f"Simpan {thn} ke database", key=f"simpan_{idx}"):
             data_simpan = {}
             for _, r in edited_f.iterrows():
@@ -226,23 +254,39 @@ st.subheader(f"Analisis tahun berjalan: {tahun_laporan}")
 # Analisis tahun berjalan (dari file tahun terbesar)
 cur = data_per_file[tahun_laporan]
 
-st.subheader("Konsistensi dasar")
+st.subheader("Pemeriksaan keseimbangan")
 nrc = cek_keseimbangan_neraca(cur.get("total_aset"), cur.get("total_liab"), cur.get("ekuitas"))
 kas_c = cek_kas_akhir(cur.get("kas"), cur.get("kas_akhir"))
-for cek in (nrc, kas_c):
-    (st.success("OK") if cek["ok"] else st.warning(cek["pesan"] or "tidak ditemukan"))
+if nrc["ok"]:
+    st.success("Neraca seimbang: Aset = Liabilitas + Ekuitas.")
+else:
+    st.warning(nrc["pesan"] or "Data neraca belum lengkap.")
+if kas_c["ok"]:
+    st.success("Kas sesuai antara neraca dan laporan arus kas.")
+else:
+    st.warning(kas_c["pesan"] or "Data kas belum lengkap.")
 
-st.subheader("Rasio (dengan rumus edukatif)")
+st.subheader("Rasio keuangan (lengkap dengan rumus)")
 rasio = hitung_rasio(cur)
-rtabel = pd.DataFrame([{"rasio": k, "nilai": v,
-                        "rumus": RASIO_INFO.get(k, {}).get("rumus", ""),
-                        "penjelasan": RASIO_INFO.get(k, {}).get("penjelasan", "")}
+rtabel = pd.DataFrame([{"Nama": LABEL_ID.get(k, k), "Nilai": v,
+                        "Rumus": RASIO_INFO.get(k, {}).get("rumus", ""),
+                        "Penjelasan": RASIO_INFO.get(k, {}).get("penjelasan", "")}
                        for k, v in rasio.items()])
-st.dataframe(rtabel, use_container_width=True)
+st.dataframe(rtabel, use_container_width=True, hide_index=True)
 
-with st.expander("Common-size"):
-    st.write("Neraca (% total aset):", common_size_neraca(cur))
-    st.write("Laba rugi (% pendapatan):", common_size_laba_rugi(cur))
+with st.expander("Proporsi tiap pos laporan"):
+    n_size = common_size_neraca(cur)
+    st.write("Neraca (% dari total aset):")
+    st.dataframe(pd.DataFrame(
+        [{"Pos": NAMA_AKUN.get(k, k),
+          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%"}
+         for k, v in n_size.items()]), use_container_width=True, hide_index=True)
+    l_size = common_size_laba_rugi(cur)
+    st.write("Laba rugi (% dari pendapatan):")
+    st.dataframe(pd.DataFrame(
+        [{"Pos": NAMA_AKUN.get(k, k),
+          "Proporsi": "tidak ditemukan" if v is None else f"{v:.1f}%"}
+         for k, v in l_size.items()]), use_container_width=True, hide_index=True)
 
 # Gabung historis DB + semua tahun yang diunggah + komparatif untuk tren/proyeksi
 hist = {h["tahun"]: h for h in ambil_historis(con, nama_perusahaan)}
@@ -294,8 +338,8 @@ st.metric("Kategori", final)
 st.write(f"Skor: **{skor['skor_total']:.1f}/100** ({kat_skor})" if skor["skor_total"] is not None else "Skor: tidak ditemukan")
 st.write(f"Altman Z'': **{zh['z']:.2f} ({zh['kategori']})**" if zh["z"] is not None else "Z'': tidak ditemukan")
 st.caption(zh["penjelasan"])
-st.write("Pendukung:", ", ".join(f"{k} ({v:.0f})" for k, v in pr["pendukung"]) or "-")
-st.write("Risiko:", ", ".join(f"{k} ({v:.0f})" for k, v in pr["risiko"]) or "-")
+st.write("Kekuatan:", ", ".join(f"{LABEL_ID.get(k, k)}" for k, v in pr["pendukung"]) or "-")
+st.write("Risiko:", ", ".join(f"{LABEL_ID.get(k, k)}" for k, v in pr["risiko"]) or "-")
 
 pend_series = [hist[t].get("pendapatan") for t in tahuns]
 proj = proyeksi_regresi(tahuns, pend_series) if len(tahuns) >= 2 else {"bisa_dipakai": False, "pesan": "Belum ada historis."}
